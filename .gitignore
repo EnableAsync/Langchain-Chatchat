@@ -3,6 +3,7 @@
 *.bak
 logs
 /knowledge_base/
+peft_qwen_14b
 /configs/*.py
 .vscode/
 

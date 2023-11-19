@@ -155,7 +155,7 @@ def knowledge_base_page(api: ApiRequest):
                 expanded=True,
         ):
             cols = st.columns(3)
-            chunk_size = cols[0].number_input("单段文本最大长度：", 1, 1000, CHUNK_SIZE)
+            chunk_size = cols[0].number_input("单段文本最大长度：", 1, 1000000000, CHUNK_SIZE)
             chunk_overlap = cols[1].number_input("相邻文本重合长度：", 0, chunk_size, OVERLAP_SIZE)
             cols[2].write("")
             cols[2].write("")
