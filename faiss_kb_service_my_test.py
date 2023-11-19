@@ -105,12 +105,29 @@ class FaissKBService(KBService):
 
 
 if __name__ == '__main__':
+    faissService = FaissKBService("fault")
+    print(faissService.exist_doc("csv_data.csv"))
+    TOP_K = 10
+
     import pandas as pd
     csv_data = pd.read_csv("knowledge_base/fault/content/csv_data.csv")
-    print(csv_data)
 
-    # faissService = FaissKBService("fault")
-    # print(faissService.exist_doc("csv_data.csv"))
-    # result = faissService.search_docs("主轴:服务通道 SERCOS1 未激活的原因是什么", top_k=10)
-    # for i in result:
-    #     print(i)
+    # 用于计算平均第几个是正确答案
+    total_index = 0
+
+    # 用于计算查全率（召回率）
+    total_search = 0
+
+    for index, row in csv_data.iterrows():
+        content = row['content'].split("？")[0]
+        row_id = row['id']
+        docs = faissService.search_docs(content, top_k=TOP_K)
+        for index, doc in enumerate(docs):
+            doc = doc[0]
+            if doc.metadata['row'] == row_id:
+                total_index += (index + 1)
+                total_search += 1
+                break
+    
+    print(f"召回率：{total_search / len(csv_data)}")
+    print(f"平均 top 率：{total_index / len(csv_data)}")
