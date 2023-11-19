@@ -107,7 +107,7 @@ class FaissKBService(KBService):
 if __name__ == '__main__':
     faissService = FaissKBService("fault")
     print(faissService.exist_doc("csv_data.csv"))
-    TOP_K = 10
+    TOP_K = 4
 
     import pandas as pd
     csv_data = pd.read_csv("knowledge_base/fault/content/csv_data.csv")
@@ -130,4 +130,28 @@ if __name__ == '__main__':
                 break
     
     print(f"召回率：{total_search / len(csv_data)}")
-    print(f"平均 top 率：{total_index / len(csv_data)}")
+    print(f"平均 top：{total_index / len(csv_data)}")
+
+# TOP_K = 10
+# 召回率：0.9694656488549618
+# 平均 top：1.133587786259542
+
+# TOP_K = 5
+# 召回率：0.9694656488549618
+# 平均 top：1.133587786259542
+
+# TOP_K = 4
+# 召回率：0.9656488549618321
+# 平均 top：1.1145038167938932
+
+# TOP_K = 3
+# 召回率：0.9580152671755725
+# 平均 top：1.083969465648855
+
+# TOP_K = 2
+# 召回率：0.9446564885496184
+# 平均 top：1.0438931297709924
+
+# TOP_K = 1
+# 召回率：0.8454198473282443
+# 平均 top：0.8454198473282443
