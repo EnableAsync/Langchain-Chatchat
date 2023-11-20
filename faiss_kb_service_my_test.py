@@ -107,7 +107,7 @@ class FaissKBService(KBService):
 if __name__ == '__main__':
     faissService = FaissKBService("fault")
     print(faissService.exist_doc("csv_data.csv"))
-    TOP_K = 4
+    TOP_K = 5
 
     import pandas as pd
     csv_data = pd.read_csv("knowledge_base/fault/content/csv_data.csv")
@@ -118,19 +118,31 @@ if __name__ == '__main__':
     # 用于计算查全率（召回率）
     total_search = 0
 
+    # 用于计算平均距离
+    total_distance = 0.0
+
     for index, row in csv_data.iterrows():
         content = row['content'].split("？")[0]
         row_id = row['id']
         docs = faissService.search_docs(content, top_k=TOP_K)
+        exist = False
         for index, doc in enumerate(docs):
+            print(doc)
+            l2_distance = doc[1]
             doc = doc[0]
             if doc.metadata['row'] == row_id:
                 total_index += (index + 1)
                 total_search += 1
+                total_distance += l2_distance
+                exist = True
                 break
+        if not exist:
+            total_index += TOP_K
+            total_distance += 1
     
     print(f"召回率：{total_search / len(csv_data)}")
     print(f"平均 top：{total_index / len(csv_data)}")
+    print(f"平均距离：{total_distance / len(csv_data)}")
 
 # TOP_K = 10
 # 召回率：0.9694656488549618
@@ -138,7 +150,8 @@ if __name__ == '__main__':
 
 # TOP_K = 5
 # 召回率：0.9694656488549618
-# 平均 top：1.133587786259542
+# 平均 top：1.2881679389312977
+# 平均距离：0.5779193880903812
 
 # TOP_K = 4
 # 召回率：0.9656488549618321
