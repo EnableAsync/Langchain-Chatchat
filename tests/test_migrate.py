@@ -33,7 +33,7 @@ def test_recreate_vs():
     folder2db([kb_name], "recreate_vs")
 
     kb = KBServiceFactory.get_service_by_name(kb_name)
-    assert kb.exists()
+    assert kb and kb.exists()
 
     files = kb.list_files()
     print(files)
@@ -46,14 +46,14 @@ def test_recreate_vs():
         assert len(docs) > 0
         pprint(docs[0])
         for doc in docs:
-            assert doc.metadata["source"] == path
+            assert doc.metadata["source"] == name
 
         # list docs base on metadata
-        docs = kb.list_docs(metadata={"source": path})
+        docs = kb.list_docs(metadata={"source": name})
         assert len(docs) > 0
 
         for doc in docs:
-            assert doc.metadata["source"] == path
+            assert doc.metadata["source"] == name
 
 
 def test_increament():
@@ -74,7 +74,7 @@ def test_increament():
         pprint(docs[0])
 
         for doc in docs:
-            assert doc.metadata["source"] == os.path.join(doc_path, f)
+            assert doc.metadata["source"] == f
 
 
 def test_prune_db():

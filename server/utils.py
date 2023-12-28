@@ -4,16 +4,16 @@ from typing import List
 from fastapi import FastAPI
 from pathlib import Path
 import asyncio
-from configs import (LLM_MODEL, LLM_DEVICE, EMBEDDING_DEVICE,
-                     MODEL_PATH, MODEL_ROOT_PATH, ONLINE_LLM_MODEL, LANGCHAIN_LLM_MODEL, logger, log_verbose,
+from configs import (LLM_MODELS, LLM_DEVICE, EMBEDDING_DEVICE,
+                     MODEL_PATH, MODEL_ROOT_PATH, ONLINE_LLM_MODEL, logger, log_verbose,
                      FSCHAT_MODEL_WORKERS, HTTPX_DEFAULT_TIMEOUT)
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from langchain.chat_models import ChatOpenAI, AzureChatOpenAI, ChatAnthropic
+from langchain.chat_models import ChatOpenAI
+from langchain.llms import OpenAI, AzureOpenAI, Anthropic
 import httpx
-from typing import Literal, Optional, Callable, Generator, Dict, Any, Awaitable, Union
-
-thread_pool = ThreadPoolExecutor(os.cpu_count())
+from typing import Literal, Optional, Callable, Generator, Dict, Any, Awaitable, Union, Tuple
+import logging
 
 
 async def wrap_done(fn: Awaitable, event: asyncio.Event):
@@ -21,6 +21,7 @@ async def wrap_done(fn: Awaitable, event: asyncio.Event):
     try:
         await fn
     except Exception as e:
+        logging.exception(e)
         # TODO: handle exception
         msg = f"Caught exception: {e}"
         logger.error(f'{e.__class__.__name__}: {msg}',
@@ -39,64 +40,49 @@ def get_ChatOpenAI(
         verbose: bool = True,
         **kwargs: Any,
 ) -> ChatOpenAI:
-    ## 以下模型是Langchain原生支持的模型，这些模型不会走Fschat封装
-    config_models = list_config_llm_models()
-    if model_name in config_models.get("langchain", {}):
-        config = config_models["langchain"][model_name]
-        if model_name == "Azure-OpenAI":
-            model = AzureChatOpenAI(
-                streaming=streaming,
-                verbose=verbose,
-                callbacks=callbacks,
-                deployment_name=config.get("deployment_name"),
-                model_version=config.get("model_version"),
-                openai_api_type=config.get("openai_api_type"),
-                openai_api_base=config.get("api_base_url"),
-                openai_api_version=config.get("api_version"),
-                openai_api_key=config.get("api_key"),
-                openai_proxy=config.get("openai_proxy"),
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
+    config = get_model_worker_config(model_name)
+    if model_name == "openai-api":
+        model_name = config.get("model_name")
+    model = ChatOpenAI(
+        streaming=streaming,
+        verbose=verbose,
+        callbacks=callbacks,
+        openai_api_key=config.get("api_key", "EMPTY"),
+        openai_api_base=config.get("api_base_url", fschat_openai_api_address()),
+        model_name=model_name,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        openai_proxy=config.get("openai_proxy"),
+        **kwargs
+    )
+    return model
 
-        elif model_name == "OpenAI":
-            model = ChatOpenAI(
-                streaming=streaming,
-                verbose=verbose,
-                callbacks=callbacks,
-                model_name=config.get("model_name"),
-                openai_api_base=config.get("api_base_url"),
-                openai_api_key=config.get("api_key"),
-                openai_proxy=config.get("openai_proxy"),
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
-        elif model_name == "Anthropic":
-            model = ChatAnthropic(
-                streaming=streaming,
-                verbose=verbose,
-                callbacks=callbacks,
-                model_name=config.get("model_name"),
-                anthropic_api_key=config.get("api_key"),
-
-            )
-    ## TODO 支持其他的Langchain原生支持的模型
-    else:
-        ## 非Langchain原生支持的模型，走Fschat封装
-        config = get_model_worker_config(model_name)
-        model = ChatOpenAI(
-            streaming=streaming,
-            verbose=verbose,
-            callbacks=callbacks,
-            openai_api_key=config.get("api_key", "EMPTY"),
-            openai_api_base=config.get("api_base_url", fschat_openai_api_address()),
-            model_name=model_name,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            openai_proxy=config.get("openai_proxy"),
-            **kwargs
-        )
-
+def get_OpenAI(
+        model_name: str,
+        temperature: float,
+        max_tokens: int = None,
+        streaming: bool = True,
+        echo: bool = True,
+        callbacks: List[Callable] = [],
+        verbose: bool = True,
+        **kwargs: Any,
+) -> OpenAI:
+    config = get_model_worker_config(model_name)
+    if model_name == "openai-api":
+        model_name = config.get("model_name")
+    model = OpenAI(
+        streaming=streaming,
+        verbose=verbose,
+        callbacks=callbacks,
+        openai_api_key=config.get("api_key", "EMPTY"),
+        openai_api_base=config.get("api_base_url", fschat_openai_api_address()),
+        model_name=model_name,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        openai_proxy=config.get("openai_proxy"),
+        echo=echo,
+        **kwargs
+    )
     return model
 
 
@@ -163,20 +149,23 @@ class ChatMessage(BaseModel):
 
 
 def torch_gc():
-    import torch
-    if torch.cuda.is_available():
-        # with torch.cuda.device(DEVICE):
-        torch.cuda.empty_cache()
-        torch.cuda.ipc_collect()
-    elif torch.backends.mps.is_available():
-        try:
-            from torch.mps import empty_cache
-            empty_cache()
-        except Exception as e:
-            msg = ("如果您使用的是 macOS 建议将 pytorch 版本升级至 2.0.0 或更高版本，"
-                   "以支持及时清理 torch 产生的内存占用。")
-            logger.error(f'{e.__class__.__name__}: {msg}',
-                         exc_info=e if log_verbose else None)
+    try:
+        import torch
+        if torch.cuda.is_available():
+            # with torch.cuda.device(DEVICE):
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
+        elif torch.backends.mps.is_available():
+            try:
+                from torch.mps import empty_cache
+                empty_cache()
+            except Exception as e:
+                msg = ("如果您使用的是 macOS 建议将 pytorch 版本升级至 2.0.0 或更高版本，"
+                       "以支持及时清理 torch 产生的内存占用。")
+                logger.error(f'{e.__class__.__name__}: {msg}',
+                             exc_info=e if log_verbose else None)
+    except Exception:
+        ...
 
 
 def run_async(cor):
@@ -293,8 +282,8 @@ def MakeFastAPIOffline(
                 redoc_favicon_url=favicon,
             )
 
-    # 从model_config中获取模型信息
 
+# 从model_config中获取模型信息
 
 def list_embed_models() -> List[str]:
     '''
@@ -306,15 +295,14 @@ def list_embed_models() -> List[str]:
 def list_config_llm_models() -> Dict[str, Dict]:
     '''
     get configured llm models with different types.
-    return [(model_name, config_type), ...]
+    return {config_type: {model_name: config}, ...}
     '''
-    workers = list(FSCHAT_MODEL_WORKERS)
-    if LLM_MODEL not in workers:
-        workers.insert(0, LLM_MODEL)
+    workers = FSCHAT_MODEL_WORKERS.copy()
+    workers.pop("default", None)
+
     return {
-        "local": MODEL_PATH["llm_model"],
-        "langchain": LANGCHAIN_LLM_MODEL,
-        "online": ONLINE_LLM_MODEL,
+        "local": MODEL_PATH["llm_model"].copy(),
+        "online": ONLINE_LLM_MODEL.copy(),
         "worker": workers,
     }
 
@@ -358,13 +346,8 @@ def get_model_worker_config(model_name: str = None) -> dict:
     from server import model_workers
 
     config = FSCHAT_MODEL_WORKERS.get("default", {}).copy()
-    config.update(ONLINE_LLM_MODEL.get(model_name, {}))
-    config.update(FSCHAT_MODEL_WORKERS.get(model_name, {}))
-
-    # 在线模型API
-    if model_name in LANGCHAIN_LLM_MODEL:
-        config["langchain_model"] = True
-        config["worker_class"] = ""
+    config.update(ONLINE_LLM_MODEL.get(model_name, {}).copy())
+    config.update(FSCHAT_MODEL_WORKERS.get(model_name, {}).copy())
 
     if model_name in ONLINE_LLM_MODEL:
         config["online_api"] = True
@@ -377,7 +360,10 @@ def get_model_worker_config(model_name: str = None) -> dict:
                              exc_info=e if log_verbose else None)
     # 本地模型
     if model_name in MODEL_PATH["llm_model"]:
-        config["model_path"] = get_model_path(model_name)
+        path = get_model_path(model_name)
+        config["model_path"] = path
+        if path and os.path.isdir(path):
+            config["model_path_exists"] = True
         config["device"] = llm_device(config.get("device"))
     return config
 
@@ -401,8 +387,8 @@ def fschat_controller_address() -> str:
     return f"http://{host}:{port}"
 
 
-def fschat_model_worker_address(model_name: str = LLM_MODEL) -> str:
-    if model := get_model_worker_config(model_name):
+def fschat_model_worker_address(model_name: str = LLM_MODELS[0]) -> str:
+    if model := get_model_worker_config(model_name):  # TODO: depends fastchat
         host = model["host"]
         if host == "0.0.0.0":
             host = "127.0.0.1"
@@ -541,21 +527,19 @@ def embedding_device(device: str = None) -> Literal["cuda", "mps", "cpu"]:
 def run_in_thread_pool(
         func: Callable,
         params: List[Dict] = [],
-        pool: ThreadPoolExecutor = None,
 ) -> Generator:
     '''
     在线程池中批量运行任务，并将运行结果以生成器的形式返回。
     请确保任务中的所有操作是线程安全的，任务函数请全部使用关键字参数。
     '''
     tasks = []
-    pool = pool or thread_pool
+    with ThreadPoolExecutor() as pool:
+        for kwargs in params:
+            thread = pool.submit(func, **kwargs)
+            tasks.append(thread)
 
-    for kwargs in params:
-        thread = pool.submit(func, **kwargs)
-        tasks.append(thread)
-
-    for obj in as_completed(tasks):
-        yield obj.result()
+        for obj in as_completed(tasks):  # TODO: Ctrl+c无法停止
+            yield obj.result()
 
 
 def get_httpx_client(
@@ -596,7 +580,8 @@ def get_httpx_client(
     })
     for host in os.environ.get("no_proxy", "").split(","):
         if host := host.strip():
-            default_proxies.update({host: None})
+            # default_proxies.update({host: None}) # Origin code
+            default_proxies.update({'all://' + host: None})  # PR 1838 fix, if not add 'all://', httpx will raise error
 
     # merge default proxies with user provided proxies
     if isinstance(proxies, str):
@@ -607,7 +592,10 @@ def get_httpx_client(
 
     # construct Client
     kwargs.update(timeout=timeout, proxies=default_proxies)
-    print(kwargs)
+
+    if log_verbose:
+        logger.info(f'{get_httpx_client.__class__.__name__}:kwargs: {kwargs}')
+
     if use_async:
         return httpx.AsyncClient(**kwargs)
     else:
@@ -632,8 +620,7 @@ def get_server_configs() -> Dict:
         TEXT_SPLITTER_NAME,
     )
     from configs.model_config import (
-        LLM_MODEL,
-        EMBEDDING_MODEL,
+        LLM_MODELS,
         HISTORY_LEN,
         TEMPERATURE,
     )
@@ -646,3 +633,42 @@ def get_server_configs() -> Dict:
     }
 
     return {**{k: v for k, v in locals().items() if k[0] != "_"}, **_custom}
+
+
+def list_online_embed_models() -> List[str]:
+    from server import model_workers
+
+    ret = []
+    for k, v in list_config_llm_models()["online"].items():
+        if provider := v.get("provider"):
+            worker_class = getattr(model_workers, provider, None)
+            if worker_class is not None and worker_class.can_embedding():
+                ret.append(k)
+    return ret
+
+
+def load_local_embeddings(model: str = None, device: str = embedding_device()):
+    '''
+    从缓存中加载embeddings，可以避免多线程时竞争加载。
+    '''
+    from server.knowledge_base.kb_cache.base import embeddings_pool
+    from configs import EMBEDDING_MODEL
+
+    model = model or EMBEDDING_MODEL
+    return embeddings_pool.load_embeddings(model=model, device=device)
+
+
+def get_temp_dir(id: str = None) -> Tuple[str, str]:
+    '''
+    创建一个临时目录，返回（路径，文件夹名称）
+    '''
+    from configs.basic_config import BASE_TEMP_DIR
+    import tempfile
+
+    if id is not None:  # 如果指定的临时目录已存在，直接返回
+        path = os.path.join(BASE_TEMP_DIR, id)
+        if os.path.isdir(path):
+            return path, id
+
+    path = tempfile.mkdtemp(dir=BASE_TEMP_DIR)
+    return path, os.path.basename(path)

@@ -1,10 +1,11 @@
 ## 导入所有的工具类
-from .search_knowledge_simple import knowledge_search_simple
-from .search_all_knowledge_once import knowledge_search_once
-from .search_all_knowledge_more import knowledge_search_more
-from .calculate import calculate
-from .translator import translate
-from .weather import weathercheck
-from .shell import shell
-from .search_internet import search_internet
-
+from .search_knowledgebase_simple import search_knowledgebase_simple
+from .search_knowledgebase_once import search_knowledgebase_once, KnowledgeSearchInput
+from .search_knowledgebase_complex import search_knowledgebase_complex, KnowledgeSearchInput
+from .calculate import calculate, CalculatorInput
+from .weather_check import weathercheck, WhetherSchema
+from .shell import shell, ShellInput
+from .search_internet import search_internet, SearchInternetInput
+from .wolfram import wolfram, WolframInput
+from .search_youtube import search_youtube, YoutubeInput
+from .arxiv import arxiv, ArxivInput

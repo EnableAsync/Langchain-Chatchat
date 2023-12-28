@@ -3,11 +3,14 @@ import os
 # 默认使用的知识库
 DEFAULT_KNOWLEDGE_BASE = "samples"
 
-# 默认向量库类型。可选：faiss, milvus(离线) & zilliz(在线), pg.
+# 默认向量库/全文检索引擎类型。可选：faiss, milvus(离线) & zilliz(在线), pgvector,全文检索引擎es
 DEFAULT_VS_TYPE = "faiss"
 
 # 缓存向量库数量（针对FAISS）
 CACHED_VS_NUM = 1
+
+# 缓存临时向量库数量（针对FAISS），用于文件对话
+CACHED_MEMO_VS_NUM = 10
 
 # 知识库中单段文本长度(不适用MarkdownHeaderTextSplitter)
 CHUNK_SIZE = 250
@@ -56,7 +59,10 @@ KB_INFO = {
     "知识库名称": "知识库介绍",
     "samples": "关于本项目issue的解答",
 }
+
+
 # 通常情况下不需要更改以下内容
+
 # 知识库默认存储路径
 KB_ROOT_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "knowledge_base")
 if not os.path.exists(KB_ROOT_PATH):
@@ -86,13 +92,21 @@ kbs_config = {
         },
     "pg": {
         "connection_uri": "postgresql://postgres:postgres@127.0.0.1:5432/langchain_chatchat",
+    },
+
+    "es": {
+        "host": "127.0.0.1",
+        "port": "9200",
+        "index_name": "test_index",
+        "user": "",
+        "password": ""
     }
 }
 
 # TextSplitter配置项，如果你不明白其中的含义，就不要修改。
 text_splitter_dict = {
     "ChineseRecursiveTextSplitter": {
-        "source": "huggingface",  ## 选择tiktoken则使用openai的方法
+        "source": "huggingface",   # 选择tiktoken则使用openai的方法
         "tokenizer_name_or_path": "",
     },
     "SpacyTextSplitter": {
@@ -116,3 +130,6 @@ text_splitter_dict = {
 
 # TEXT_SPLITTER 名称
 TEXT_SPLITTER_NAME = "ChineseRecursiveTextSplitter"
+
+# Embedding模型定制词语的词表文件
+EMBEDDING_KEYWORD_FILE = "embedding_keywords.txt"
