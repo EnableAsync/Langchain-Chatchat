@@ -105,12 +105,19 @@ class FaissKBService(KBService):
 
 
 if __name__ == '__main__':
-    faissService = FaissKBService("fault")
+    from pprint import pprint
+    # faissService = FaissKBService("fault")
+    from server.knowledge_base.kb_service import faiss_kb_service
+    # faissService = faiss_kb_service.FaissKBService("kb_200_and_500_strip")
+    faissService = faiss_kb_service.FaissKBService("test_book_data")
     print(faissService.exist_doc("csv_data.csv"))
+    print(faissService.exist_doc("机床维修案例_200.csv"))
+
     TOP_K = 5
 
     import pandas as pd
-    csv_data = pd.read_csv("knowledge_base/fault/content/csv_data.csv")
+    # csv_data = pd.read_csv("/home/kdzlys/data-disk/sjj/Langchain-Chatchat/knowledge_base/fault/content/csv_data.csv")
+    csv_data = pd.read_csv("/home/kdzlys/data-disk/sjj/Langchain-Chatchat/knowledge_base/test_book_data/content/200-机床维修例子_output.csv")
 
     # 用于计算平均第几个是正确答案
     total_index = 0
@@ -121,15 +128,26 @@ if __name__ == '__main__':
     # 用于计算平均距离
     total_distance = 0.0
 
+    row_id = 0
+
     for index, row in csv_data.iterrows():
-        content = row['content'].split("？")[0]
-        row_id = row['id']
-        docs = faissService.search_docs(content, top_k=TOP_K)
+        # content = row['content'].strip()
+        content = row['questions'].strip()
+        pprint(content)
+        # answer = row['分析过程']
+        # answer = row['answers']
+        # row_id = row['id']
+        # print(content)
+        docs = faissService.search_docs(content, TOP_K, 1.0)
         exist = False
+        # print(docs)
+        # break
         for index, doc in enumerate(docs):
-            print(doc)
+            # print(doc)
             l2_distance = doc[1]
             doc = doc[0]
+            if not "row" in doc.metadata:
+                break
             if doc.metadata['row'] == row_id:
                 total_index += (index + 1)
                 total_search += 1
@@ -139,6 +157,11 @@ if __name__ == '__main__':
         if not exist:
             total_index += TOP_K
             total_distance += 1
+            print(content)
+            pprint(docs)
+        row_id += 1
+        # if row_id == 5:
+        #     break
     
     print(f"召回率：{total_search / len(csv_data)}")
     print(f"平均 top：{total_index / len(csv_data)}")
@@ -168,3 +191,19 @@ if __name__ == '__main__':
 # TOP_K = 1
 # 召回率：0.8454198473282443
 # 平均 top：0.8454198473282443
+
+
+# 200+500 中的 200 条
+# 召回率：0.995
+# 平均 top：1.34
+# 平均距离：0.1928387996030506
+
+# 200+500 中的 500 条
+# 召回率：1.0
+# 平均 top：1.015267175572519
+# 平均距离：0.03619958298860246
+
+# 200 + 500 + 所有书中的 200 条
+# 召回率：0.9948979591836735
+# 平均 top：1.316326530612245
+# 平均距离：0.19947207336580114
